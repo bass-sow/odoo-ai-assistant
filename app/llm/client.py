@@ -26,9 +26,15 @@ class ToolCall:
 class ChatResult:
     content: str | None
     tool_calls: list[ToolCall] = field(default_factory=list)
+    # The assistant message exactly as the API returned it. Gemini 3 attaches a
+    # thought signature to each tool call and rejects the next turn (400) unless
+    # it is sent back untouched, so the history reuses this instead of rebuilding.
+    raw: dict | None = None
 
     def assistant_message(self) -> dict:
         """The message to append to the history so the next turn sees this reply."""
+        if self.raw:
+            return self.raw
         msg: dict = {"role": "assistant", "content": self.content or ""}
         if self.tool_calls:
             msg["tool_calls"] = [
@@ -84,7 +90,8 @@ class OpenAICompatLLM:
                 log.warning("LLM %s, retrying in %.0fs", type(e).__name__, delay)
             except APIStatusError as e:
                 if e.status_code < 500:
-                    raise LLMError(f"LLM error {e.status_code}: {e.message}") from e
+                    detail = e.body if e.body is not None else e.message
+                    raise LLMError(f"LLM error {e.status_code}: {str(detail)[:500]}") from e
                 if attempt == self.max_retries:
                     err = LLMError(f"LLM error {e.status_code}: {e.message}")
                     err.unavailable = True
@@ -140,7 +147,12 @@ class OpenAICompatLLM:
             except json.JSONDecodeError:
                 args = {"_raw": tc.function.arguments}
             calls.append(ToolCall(id=tc.id or f"call_{i}", name=tc.function.name, arguments=args))
-        return ChatResult(content=msg.content, tool_calls=calls)
+        raw = None
+        if calls:
+            raw = msg.model_dump(exclude_none=True)
+            raw["role"] = "assistant"
+            raw.setdefault("content", "")
+        return ChatResult(content=msg.content, tool_calls=calls, raw=raw)
 
 
 class FakeLLM:
