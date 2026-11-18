@@ -1,0 +1,9 @@
+[
+  {"question": "Which lots are already expired?", "expected_tools": ["get_expiring_lots"], "must_contain": ["YOG-2611-A", "MOZ-2610-Z"]},
+  {"question": "Which yogurt lots expire in the next 7 days?", "expected_tools": ["get_expiring_lots"], "must_contain": ["YOG-2611-B"]},
+  {"question": "Where is the fresh mozzarella stored?", "expected_tools": ["get_stock_by_location"], "must_contain": ["Cold Room"]},
+  {"question": "What deliveries are pending for Hotel Mar Blau?", "expected_tools": ["get_pending_deliveries"], "must_contain": ["WH/OUT/00413"]},
+  {"question": "How much olive oil do we have?", "expected_tools": ["search_products"], "must_contain": ["60"]},
+  {"question": "We have an expired mozzarella lot. What's the procedure to get rid of it?", "expected_tools": ["search_procedures"], "must_contain": ["scrap"]},
+  {"question": "¿Qué lotes caducan esta semana y qué hacemos con ellos?", "expected_tools": ["get_expiring_lots", "search_procedures"], "must_contain": ["YOG-2611-B"]}
+]

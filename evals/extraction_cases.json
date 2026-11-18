@@ -1,0 +1,11 @@
+[
+  {"file": "data/samples/albaran_lacteos.txt",
+   "expected": {"supplier_vat": "B12345678", "document_number": "AV-2026-1187", "document_date": "2026-11-17", "purchase_order": "P00102", "n_lines": 3,
+                "lines": [{"product_code": "YOG-500", "quantity": 240, "lot": "YOG-2612-C", "expiration_date": "2026-12-10"},
+                          {"product_code": "MOZ-125", "quantity": 150, "lot": "MOZ-2612-B", "expiration_date": "2026-12-05"},
+                          {"product_code": "QF-200", "quantity": 60, "lot": "QF-2611-A", "expiration_date": "2026-11-28"}]}},
+  {"file": "data/samples/albaran_conservas.txt",
+   "expected": {"supplier_vat": "A87654321", "document_number": "CE-55120", "document_date": "2026-11-16", "purchase_order": "P00099", "n_lines": 2,
+                "lines": [{"product_code": "SAU-400", "quantity": 500, "lot": "SAU-2611-D", "expiration_date": "2027-05-31"},
+                          {"product_code": null, "quantity": 40, "lot": null, "expiration_date": null}]}}
+]

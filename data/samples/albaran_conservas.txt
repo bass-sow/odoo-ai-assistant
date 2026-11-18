@@ -1,0 +1,7 @@
+CONSERVAS EBRO S.A.   NIF: A87654321
+Delivery note / Albarán: CE-55120
+Date: 2026-11-16      Order ref.: P00099
+
+1) SAU-400  Tomato sauce 400g   x 500 units   @ 0,62 EUR
+   GS1: (01)08412345000017(10)SAU-2611-D(17)270531(37)500
+2) Olive oil 5L (no reference)  x 40 units   @ 21,90 EUR

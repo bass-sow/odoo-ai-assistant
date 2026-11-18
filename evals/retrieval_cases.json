@@ -1,0 +1,16 @@
+[
+  {"question": "What temperature must chilled goods have when they arrive?", "expected_source": "01-receiving-goods.md"},
+  {"question": "The GS1 label can't be read, what do I do with the lot number?", "expected_source": "01-receiving-goods.md"},
+  {"question": "The supplier sent less than ordered, backorder or not?", "expected_source": "01-receiving-goods.md"},
+  {"question": "What does FEFO mean?", "expected_source": "02-fefo-picking.md"},
+  {"question": "A hotel needs at least 10 days of shelf life, can I pick another lot?", "expected_source": "02-fefo-picking.md"},
+  {"question": "Minimum shelf life for frozen products when delivered", "expected_source": "02-fefo-picking.md"},
+  {"question": "How do I scrap an expired lot in Odoo?", "expected_source": "03-expired-stock.md"},
+  {"question": "Yogurt expires in 3 days, can we donate it?", "expected_source": "03-expired-stock.md"},
+  {"question": "Customer returned frozen spinach, can it go back to stock?", "expected_source": "04-customer-returns.md"},
+  {"question": "Who creates the credit note for a return?", "expected_source": "04-customer-returns.md"},
+  {"question": "I can't validate the picking on the PDA", "expected_source": "05-barcode-pda-faq.md"},
+  {"question": "How to move stock between two locations with the barcode app", "expected_source": "05-barcode-pda-faq.md"},
+  {"question": "Where do I print a lot label with DataMatrix?", "expected_source": "05-barcode-pda-faq.md"},
+  {"question": "¿Qué hago con un lote caducado?", "expected_source": "03-expired-stock.md"}
+]

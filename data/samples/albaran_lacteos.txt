@@ -1,0 +1,11 @@
+LÁCTEOS DEL VALLÈS SL - CIF B-12345678
+Pol. Ind. Can Petit, 08227 Terrassa
+
+ALBARÁN Nº AV-2026-1187        Fecha: 17/11/2026        Su pedido: P00102
+
+Ref       Descripción              Cant.  Lote         Cad.
+YOG-500   Yogur griego 500g        240    YOG-2612-C   10/12/2026
+MOZ-125   Mozzarella fresca 125g   150    MOZ-2612-B   05/12/2026
+QF-200    Queso fresco 200g        60     QF-2611-A    28/11/2026
+
+Transportista: Frigo Express   Temperatura salida: 3 °C

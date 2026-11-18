@@ -1,0 +1,12 @@
+# Container image for AWS Lambda (up to 10 GB, no zip size limits).
+FROM public.ecr.aws/lambda/python:3.11
+
+COPY pyproject.toml README.md ${LAMBDA_TASK_ROOT}/
+COPY app ${LAMBDA_TASK_ROOT}/app
+COPY evals ${LAMBDA_TASK_ROOT}/evals
+RUN pip install --no-cache-dir "${LAMBDA_TASK_ROOT}[aws]" --target "${LAMBDA_TASK_ROOT}"
+
+# Only /tmp is writable on Lambda: the index is downloaded there from S3.
+ENV INDEX_DIR=/tmp/index USAGE_LOG=/tmp/usage.jsonl
+
+CMD ["app.lambda_handler.handler"]

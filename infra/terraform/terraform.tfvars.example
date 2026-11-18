@@ -1,0 +1,3 @@
+llm_api_key = "your-gemini-key"
+api_token   = "a-long-random-string"
+alert_email = "you@example.com"
