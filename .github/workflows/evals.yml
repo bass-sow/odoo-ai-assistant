@@ -1,0 +1,36 @@
+name: Evals
+
+# Runs the three evaluation suites against the real free-tier LLM (Gemini).
+# Manual only: it spends free-tier quota.
+on:
+  workflow_dispatch:
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      LLM_PROVIDER: gemini
+      EMBED_PROVIDER: gemini
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: python -m app.rag.ingest
+      - name: Retrieval
+        run: python -m evals.run retrieval
+      - name: Extraction
+        if: always()
+        run: python -m evals.run extraction
+      - name: Agent
+        if: always()
+        run: python -m evals.run agent
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results
+          path: evals/results/
