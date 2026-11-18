@@ -13,6 +13,9 @@ PROVIDERS = {
     "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "chat_model": "gemini-flash-latest",
+        # The "latest" alias points at the newest model, which is often overloaded
+        # (503) on the free tier. These are tried in order when it is.
+        "fallback_models": ["gemini-3.1-flash-lite", "gemini-flash-lite-latest"],
         "embed_model": "gemini-embedding-001",
     },
     "groq": {
@@ -42,6 +45,7 @@ class Settings(BaseSettings):
     llm_api_key_ssm_param: str = ""  # on AWS the key is read from SSM Parameter Store
     llm_base_url: str = ""
     llm_model: str = ""
+    llm_fallback_models: str = ""  # comma-separated; empty = provider defaults
     llm_temperature: float = 0.1
 
     # Embeddings (can use a different provider than chat, e.g. Groq chat + local embeddings)
@@ -80,6 +84,14 @@ class Settings(BaseSettings):
     @property
     def chat_model(self) -> str:
         return self.llm_model or self.provider(self.llm_provider).get("chat_model", "")
+
+    @property
+    def chat_fallback_models(self) -> list[str]:
+        if self.llm_fallback_models:
+            return [m.strip() for m in self.llm_fallback_models.split(",") if m.strip()]
+        if self.llm_model:  # a model was pinned explicitly: no silent switching
+            return []
+        return list(self.provider(self.llm_provider).get("fallback_models", []))
 
     @property
     def embedding_model(self) -> str:

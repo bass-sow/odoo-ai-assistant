@@ -180,3 +180,26 @@ def test_match_flags_unknown_products(odoo):
     assert result["lines"][0]["odoo_product"]["name"] == "Greek Yogurt 500g"
     assert not result["ready_to_import"]
     assert any("QF-200" in issue for issue in result["issues"])
+
+
+def test_llm_falls_back_when_model_is_unavailable(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.llm.client import LLMError, OpenAICompatLLM
+
+    llm = OpenAICompatLLM("http://x", "k", "busy-model", fallback_models=["spare-model"])
+    tried = []
+
+    def fake_create(model, kwargs, *errors):
+        tried.append(model)
+        if model == "busy-model":
+            err = LLMError("503")
+            err.unavailable = True
+            raise err
+        msg = SimpleNamespace(content="ok", tool_calls=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=msg)], usage=None), 5
+
+    monkeypatch.setattr(llm, "_create", fake_create)
+    assert llm.chat([{"role": "user", "content": "hi"}]).content == "ok"
+    assert tried == ["busy-model", "spare-model"]
+    assert llm.model == "spare-model"  # sticks with the model that answered

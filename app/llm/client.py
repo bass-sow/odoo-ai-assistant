@@ -55,15 +55,44 @@ class OpenAICompatLLM:
         tracker: UsageTracker | None = None,
         temperature: float = 0.1,
         max_retries: int = 4,
+        fallback_models: list[str] | None = None,
     ):
         from openai import OpenAI
 
         # Ollama ignores the key but the SDK requires a non-empty one.
         self._client = OpenAI(base_url=base_url, api_key=api_key or "not-needed", max_retries=0)
         self.model = model
+        self.fallback_models = list(fallback_models or [])
         self.temperature = temperature
         self.max_retries = max_retries
         self.tracker = tracker
+
+    def _create(self, model, kwargs, RateLimitError, APIConnectionError, APIStatusError):
+        """One model, with backoff. Raises LLMError(unavailable=True) on 429/5xx/network."""
+        delay = 2.0
+        for attempt in range(self.max_retries + 1):
+            start = time.perf_counter()
+            try:
+                resp = self._client.chat.completions.create(model=model, **kwargs)
+                return resp, int((time.perf_counter() - start) * 1000)
+            except (RateLimitError, APIConnectionError) as e:
+                # Free tiers return 429 often: back off and retry.
+                if attempt == self.max_retries:
+                    err = LLMError(f"LLM unavailable after {attempt + 1} attempts: {e}")
+                    err.unavailable = True
+                    raise err from e
+                log.warning("LLM %s, retrying in %.0fs", type(e).__name__, delay)
+            except APIStatusError as e:
+                if e.status_code < 500:
+                    raise LLMError(f"LLM error {e.status_code}: {e.message}") from e
+                if attempt == self.max_retries:
+                    err = LLMError(f"LLM error {e.status_code}: {e.message}")
+                    err.unavailable = True
+                    raise err from e
+                log.warning("LLM %s returned %d, retrying in %.0fs", model, e.status_code, delay)
+            time.sleep(delay)
+            delay *= 2
+        raise LLMError("unreachable")
 
     def chat(
         self,
@@ -74,33 +103,24 @@ class OpenAICompatLLM:
     ) -> ChatResult:
         from openai import APIConnectionError, APIStatusError, RateLimitError
 
-        kwargs: dict = {"model": self.model, "messages": messages, "temperature": self.temperature}
+        kwargs: dict = {"messages": messages, "temperature": self.temperature}
         if tools:
             kwargs["tools"] = tools
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
-        delay = 2.0
-        for attempt in range(self.max_retries + 1):
-            start = time.perf_counter()
+        models = [self.model] + [m for m in self.fallback_models if m != self.model]
+        for n, model in enumerate(models):
             try:
-                resp = self._client.chat.completions.create(**kwargs)
+                resp, latency = self._create(model, kwargs, RateLimitError, APIConnectionError,
+                                             APIStatusError)
                 break
-            except (RateLimitError, APIConnectionError) as e:
-                # Free tiers return 429 often: back off and retry.
-                if attempt == self.max_retries:
-                    raise LLMError(f"LLM unavailable after {attempt + 1} attempts: {e}") from e
-                log.warning("LLM %s, retrying in %.0fs", type(e).__name__, delay)
-                time.sleep(delay)
-                delay *= 2
-            except APIStatusError as e:
-                if e.status_code >= 500 and attempt < self.max_retries:
-                    time.sleep(delay)
-                    delay *= 2
-                    continue
-                raise LLMError(f"LLM error {e.status_code}: {e.message}") from e
-
-        latency = int((time.perf_counter() - start) * 1000)
+            except LLMError as e:
+                if not getattr(e, "unavailable", False) or n == len(models) - 1:
+                    raise
+                log.warning("LLM %s unavailable, falling back to %s", model, models[n + 1])
+        # Stick with the model that answered, so later calls skip the overloaded one.
+        self.model = model
         if self.tracker and resp.usage:
             self.tracker.record(
                 Usage(

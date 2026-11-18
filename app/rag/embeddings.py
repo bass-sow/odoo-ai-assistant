@@ -25,7 +25,12 @@ class OpenAICompatEmbedder:
         out: list[list[float]] = []
         for i in range(0, len(texts), self.batch_size):
             resp = self._client.embeddings.create(model=self.model, input=texts[i : i + self.batch_size])
-            out.extend(d.embedding for d in sorted(resp.data, key=lambda d: d.index))
+            data = resp.data
+            # Gemini's OpenAI-compatible endpoint leaves `index` empty; the list is
+            # already in input order then, so only sort when every item has one.
+            if all(d.index is not None for d in data):
+                data = sorted(data, key=lambda d: d.index)
+            out.extend(d.embedding for d in data)
         return _normalise(np.array(out, dtype=np.float32))
 
 

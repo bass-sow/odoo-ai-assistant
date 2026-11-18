@@ -45,7 +45,8 @@ def build_state(settings: Settings, llm=None) -> dict:
             llm = FakeLLM()
         else:
             llm = OpenAICompatLLM(settings.chat_base_url, key, settings.chat_model, tracker,
-                                  settings.llm_temperature)
+                                  settings.llm_temperature,
+                                  fallback_models=settings.chat_fallback_models)
 
     retriever = None
     try:
