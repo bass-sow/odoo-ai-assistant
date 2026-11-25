@@ -6,5 +6,5 @@
   {"question": "How much olive oil do we have?", "expected_tools": ["search_products"], "must_contain": ["60"]},
   {"question": "We have an expired mozzarella lot. What's the procedure to get rid of it?", "expected_tools": ["search_procedures"], "must_contain": ["scrap"]},
   {"question": "¿Qué lotes caducan esta semana y qué hacemos con ellos?", "expected_tools": ["get_expiring_lots", "search_procedures"], "must_contain": ["YOG-2611-B"]},
-  {"question": "Which customers have invoices more than 15 days overdue, and how much do they owe?", "expected_tools": ["get_overdue_invoices"], "must_contain": ["INV/2026/00231", "Hotel Mar Blau"]}
+  {"question": "Which customers have invoices more than 15 days overdue, and how much do they owe?", "expected_tools": ["get_overdue_invoices"], "must_contain": ["Restaurante La Plaça", "Hotel Mar Blau"], "must_not_contain": ["Supermercat"]}
 ]

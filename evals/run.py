@@ -56,7 +56,8 @@ def eval_agent(settings) -> dict:
         used = [s["tool"] for s in out["steps"]]
         tools_ok = all(t in used for t in case["expected_tools"])
         text = out["answer"].lower()
-        content_ok = all(s.lower() in text for s in case["must_contain"])
+        content_ok = (all(s.lower() in text for s in case["must_contain"])
+                      and not any(s.lower() in text for s in case.get("must_not_contain", [])))
         passed += tools_ok and content_ok
         results.append({"question": case["question"], "tools_ok": tools_ok,
                         "content_ok": content_ok, "tools_used": used,
