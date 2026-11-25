@@ -42,6 +42,7 @@
     <textarea id="q"></textarea>
     <div class="row">
       <button class="go" id="go">Send</button>
+      <button class="hint" id="reset" style="background:none;border:0;padding:0;font:inherit" hidden>New conversation</button>
       <span id="examples"></span>
     </div>
     <div id="out"></div>
@@ -49,11 +50,12 @@
 </main>
 <script>
 const examples = {
-  agent: ["Which lots expire this week and what should we do with them?", "Where is the mozzarella stored?", "Deliveries for Hotel Mar Blau"],
+  agent: ["Which lots expire this week and what should we do with them?", "Where is the mozzarella stored?", "Which customers owe us money for more than 15 days?"],
   ask: ["How do I receive goods with GS1 labels?", "What is FEFO and when can I skip it?"],
   extract: ["(paste the text of a delivery note)"],
 };
 let mode = "agent";
+let sessionId = null;  // agent mode: follow-up questions keep the context
 // Deployed instances need ?key=... in the URL; it is sent as X-API-Key.
 const apiKey = new URLSearchParams(location.search).get("key") || "";
 const $ = (id) => document.getElementById(id);
@@ -67,7 +69,9 @@ function setMode(m) {
     $("examples").appendChild(s);
   });
   $("out").innerHTML = "";
+  $("reset").hidden = !(m === "agent" && sessionId);
 }
+$("reset").onclick = () => { sessionId = null; $("out").innerHTML = ""; $("reset").hidden = true; $("q").focus(); };
 const sample = `LÁCTEOS DEL VALLÈS SL - CIF B-12345678
 ALBARÁN Nº AV-2026-1187   Fecha: 17/11/2026   Su pedido: P00102
 Ref       Descripción              Cant.  Lote         Cad.
@@ -87,10 +91,11 @@ $("go").onclick = async () => {
       r = await fetch("/extract", { method: "POST", body: f, headers: { "X-API-Key": apiKey } });
     } else {
       r = await fetch("/" + mode, { method: "POST", headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
-                                     body: JSON.stringify({ question: q }) });
+                                     body: JSON.stringify(mode === "agent" ? { question: q, session_id: sessionId } : { question: q }) });
     }
     const data = await r.json();
     if (!r.ok) { $("out").textContent = "Error: " + (data.detail || r.status); return; }
+    if (mode === "agent") { sessionId = data.session_id; $("reset").hidden = false; }
     render(data);
   } catch (e) { $("out").textContent = "Error: " + e; }
 };

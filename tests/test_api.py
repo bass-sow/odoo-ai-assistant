@@ -42,6 +42,26 @@ def test_agent_endpoint(settings):
     assert r.json()["steps"][0]["tool"] == "get_stock_by_location"
 
 
+def test_agent_follow_up_uses_the_session(settings):
+    llm = FakeLLM(["The mozzarella is in the cold room.", "150 units in lot MOZ-2612-A."])
+    with TestClient(create_app(settings, llm=llm)) as c:
+        first = c.post("/agent", json={"question": "Where is the mozzarella?"}).json()
+        sid = first["session_id"]
+        second = c.post("/agent", json={"question": "How many units?", "session_id": sid}).json()
+        assert second["session_id"] == sid
+        assert c.delete(f"/agent/sessions/{sid}").status_code == 204
+        c.post("/agent", json={"question": "How many units?", "session_id": sid})
+    follow_up, after_reset = llm.calls[1]["messages"], llm.calls[2]["messages"]
+    assert follow_up[2] == {"role": "assistant", "content": "The mozzarella is in the cold room."}
+    assert len(after_reset) == 2  # system + question: the history was cleared
+
+
+def test_agent_rejects_bad_session_id(settings):
+    with client(settings, []) as c:
+        r = c.post("/agent", json={"question": "hello", "session_id": "../../etc"})
+    assert r.status_code == 422
+
+
 def test_extract_from_text(settings):
     note = {"supplier_name": "Conservas Ebro SA", "supplier_vat": "A87654321",
             "document_number": "CE-55120", "lines": [

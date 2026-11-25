@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app.agent.loop import run_agent
+from app.agent.sessions import SessionStore
 from app.agent.tools import build_tools
 from app.config import Settings, get_settings
 from app.extract.extractor import (
@@ -37,6 +38,25 @@ def _api_key(settings: Settings) -> str:
     return param["Parameter"]["Value"]
 
 
+def build_retriever(settings: Settings, api_key: str) -> Retriever | None:
+    """Load the documentation index; None if it is not available (the rest still works)."""
+    try:
+        embedder = build_embedder(settings.model_copy(update={"llm_api_key": api_key}))
+        if settings.vector_store == "pgvector":
+            store = PgVectorStore(settings.database_url, embedder.name,
+                                  embedder.embed(["dim probe"]).shape[1])
+        else:
+            if settings.s3_bucket and not Path(settings.index_dir, "meta.json").exists():
+                download_index_from_s3(settings.s3_bucket, settings.s3_index_prefix,
+                                       settings.index_dir)
+            store = NumpyStore.load(settings.index_dir)
+        log.info("Index loaded: %d chunks (%s)", store.count(), embedder.name)
+        return Retriever(embedder, store, settings.retrieval_k, settings.retrieval_min_score)
+    except Exception as e:
+        log.warning("Documentation index not available (%s). /ask is disabled.", e)
+        return None
+
+
 def build_state(settings: Settings, llm=None) -> dict:
     tracker = UsageTracker(settings.usage_log)
     key = _api_key(settings)
@@ -48,25 +68,11 @@ def build_state(settings: Settings, llm=None) -> dict:
                                   settings.llm_temperature,
                                   fallback_models=settings.chat_fallback_models)
 
-    retriever = None
-    try:
-        embedder = build_embedder(settings.model_copy(update={"llm_api_key": key}))
-        if settings.vector_store == "pgvector":
-            store = PgVectorStore(settings.database_url, embedder.name,
-                                  embedder.embed(["dim probe"]).shape[1])
-        else:
-            if settings.s3_bucket and not Path(settings.index_dir, "meta.json").exists():
-                download_index_from_s3(settings.s3_bucket, settings.s3_index_prefix,
-                                       settings.index_dir)
-            store = NumpyStore.load(settings.index_dir)
-        retriever = Retriever(embedder, store, settings.retrieval_k, settings.retrieval_min_score)
-        log.info("Index loaded: %d chunks (%s)", store.count(), embedder.name)
-    except Exception as e:
-        log.warning("Documentation index not available (%s). /ask is disabled.", e)
-
+    retriever = build_retriever(settings, key)
     odoo = build_odoo(settings)
     return {"llm": llm, "tracker": tracker, "retriever": retriever, "odoo": odoo,
-            "tools": build_tools(odoo, retriever), "settings": settings}
+            "tools": build_tools(odoo, retriever), "sessions": SessionStore(),
+            "settings": settings}
 
 
 def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
@@ -91,6 +97,12 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
     class Question(BaseModel):
         question: str = Field(min_length=3, max_length=1000)
 
+    class AgentQuestion(Question):
+        session_id: str | None = Field(
+            None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$",
+            description="Send back the session_id of a previous answer to ask a follow-up "
+                        "question. Omit it to start a new conversation.")
+
     @app.get("/", include_in_schema=False)
     def ui():
         return FileResponse(Path(__file__).parent / "static" / "index.html")
@@ -113,12 +125,21 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
             raise HTTPException(503, str(e)) from e
 
     @app.post("/agent")
-    def agent(q: Question):
+    def agent(q: AgentQuestion):
         s = app.state.s
+        sessions: SessionStore = s["sessions"]
+        session_id = q.session_id or sessions.new_id()
         try:
-            return run_agent(q.question, s["llm"], s["tools"])
+            result = run_agent(q.question, s["llm"], s["tools"],
+                               history=sessions.history(session_id))
         except LLMError as e:
             raise HTTPException(503, str(e)) from e
+        sessions.append(session_id, q.question, result["answer"])
+        return {**result, "session_id": session_id}
+
+    @app.delete("/agent/sessions/{session_id}", status_code=204)
+    def end_session(session_id: str):
+        app.state.s["sessions"].clear(session_id)
 
     @app.post("/extract")
     async def extract(text: str | None = Form(None), file: UploadFile | None = File(None)):
