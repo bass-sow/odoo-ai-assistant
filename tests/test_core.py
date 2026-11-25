@@ -108,6 +108,25 @@ def test_pending_deliveries_excludes_done_and_incoming(odoo):
     assert "WH/OUT/00412" in refs
 
 
+def test_overdue_invoices_tool(odoo):
+    tool = build_tools(odoo)["get_overdue_invoices"]
+    result = tool.fn()
+    names = [i["invoice"] for i in result["invoices"]]
+    # Oldest first; paid and not yet due invoices are left out.
+    assert names == ["INV/2026/00231", "INV/2026/00250", "INV/2026/00244", "INV/2026/00262"]
+    assert result["invoices"][0]["days_overdue"] == 41
+    assert result["total_due_by_customer"]["Restaurante La Plaça"] == 2460.5
+    partial = next(i for i in result["invoices"] if i["invoice"] == "INV/2026/00250")
+    assert partial["partially_paid"] and partial["amount_due"] == 1155.0
+
+
+def test_overdue_invoices_min_days_and_customer(odoo):
+    fn = build_tools(odoo)["get_overdue_invoices"].fn
+    assert [i["invoice"] for i in fn(min_days=15)["invoices"]] == ["INV/2026/00231", "INV/2026/00250"]
+    assert [i["invoice"] for i in fn(min_days=41)["invoices"]] == ["INV/2026/00231"]
+    assert [i["invoice"] for i in fn(customer="mar blau")["invoices"]] == ["INV/2026/00250"]
+
+
 def test_tool_schema_is_openai_format(odoo):
     schema = build_tools(odoo)["get_expiring_lots"].schema()
     assert schema["type"] == "function"
@@ -203,3 +222,72 @@ def test_llm_falls_back_when_model_is_unavailable(monkeypatch):
     assert llm.chat([{"role": "user", "content": "hi"}]).content == "ok"
     assert tried == ["busy-model", "spare-model"]
     assert llm.model == "spare-model"  # sticks with the model that answered
+
+
+# --- Conversation memory -----------------------------------------------------------------
+
+def test_session_store_keeps_last_turns():
+    from app.agent.sessions import SessionStore
+
+    store = SessionStore(max_turns=2)
+    for i in range(3):
+        store.append("s1", f"q{i}", f"a{i}")
+    history = store.history("s1")
+    assert [m["content"] for m in history] == ["q1", "a1", "q2", "a2"]
+    assert store.history("other") == []
+
+
+def test_session_store_expires_and_evicts(monkeypatch):
+    from app.agent import sessions
+
+    now = [1000.0]
+    monkeypatch.setattr(sessions.time, "monotonic", lambda: now[0])
+    store = sessions.SessionStore(ttl_seconds=60, max_sessions=2)
+    store.append("a", "q", "a")
+    now[0] += 61
+    assert store.history("a") == []
+    for sid in ("b", "c", "d"):
+        store.append(sid, "q", "a")
+    assert store.history("b") == [] and store.history("d")
+
+
+def test_agent_sends_history_to_the_model(odoo):
+    llm = FakeLLM(["Second answer"])
+    history = [{"role": "user", "content": "Where is the mozzarella?"},
+               {"role": "assistant", "content": "In the cold room."}]
+    run_agent("And how many units?", llm, build_tools(odoo), history=history)
+    sent = llm.calls[0]["messages"]
+    assert [m["role"] for m in sent] == ["system", "user", "assistant", "user"]
+    assert sent[-1]["content"] == "And how many units?"
+
+
+# --- MCP server ------------------------------------------------------------------------
+
+def test_mcp_server_exposes_the_agent_tools(odoo):
+    import anyio
+    from mcp import Client
+
+    from app.mcp_server import build_server
+
+    tools = build_tools(odoo)
+    server = build_server(tools=tools)
+
+    async def scenario():
+        async with Client(server) as client:
+            listed = {t.name: t for t in (await client.list_tools()).tools}
+            ok = await client.call_tool("get_stock_by_location", {"product": "mozzarella"})
+            bad = await client.call_tool("get_expiring_lots", {"days": 999})
+            return listed, ok, bad
+
+    listed, ok, bad = anyio.run(scenario)
+    assert set(listed) == set(tools)
+    expiring = listed["get_expiring_lots"]
+    assert expiring.annotations.read_only_hint is True
+    days = expiring.input_schema["properties"]["days"]
+    assert days["maximum"] == 365 and "Window in days" in days["description"]
+    assert "product" in listed["get_stock_by_location"].input_schema["required"]
+
+    assert not ok.is_error
+    rows = json.loads(ok.content[0].text)
+    assert {r["location"] for r in rows} >= {"WH/Stock/Cold Room"}
+    assert bad.is_error
