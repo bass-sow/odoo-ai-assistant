@@ -132,7 +132,7 @@ Results are saved in `evals/results/` to compare models, prompts or chunk sizes.
 | retrieval | offline hashing embedder | hit@3 0.93, MRR 0.89 |
 | retrieval | `gemini-embedding-001` | hit@3 1.00, MRR 0.96 |
 | extraction | `gemini-3.1-flash-lite`, 2 delivery notes | field accuracy 1.00 |
-| agent | `gemini-3.1-flash-lite`, 7 questions | pass rate 1.00 (right tools + right facts) |
+| agent | `gemini-flash-lite-latest`, 8 questions (incl. overdue invoices) | pass rate 1.00 (right tools + right facts) |
 
 The hashing embedder misses the Spanish question ("¿Qué hago con un lote caducado?")
 because it only matches words. Semantic embeddings handle it: that is the point of
