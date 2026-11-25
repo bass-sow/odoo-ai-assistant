@@ -90,6 +90,23 @@ def build_mock() -> MockOdoo:
          "state": "assigned", "picking_type_code": "incoming", "origin": "P00102"},
     ]
 
+    # Customer invoices; "days" is the due date relative to today.
+    invoice_specs = [
+        (401, "INV/2026/00231", 51, -41, 1840.50, 1840.50, "not_paid"),
+        (402, "INV/2026/00244", 51, -12, 620.00, 620.00, "not_paid"),
+        (403, "INV/2026/00250", 52, -19, 2310.00, 1155.00, "partial"),
+        (404, "INV/2026/00262", 53, -3, 980.40, 980.40, "not_paid"),
+        (405, "INV/2026/00270", 52, 12, 1430.00, 1430.00, "not_paid"),
+        (406, "INV/2026/00215", 53, -30, 760.00, 0.0, "paid"),
+    ]
+    invoices = [
+        {"id": inv_id, "name": name, "partner_id": part[pid], "move_type": "out_invoice",
+         "state": "posted", "invoice_date_due": _date(days)[:10], "amount_total": total,
+         "amount_residual": residual, "payment_state": pay_state,
+         "currency_id": [1, "EUR"]}
+        for inv_id, name, pid, days, total, residual, pay_state in invoice_specs
+    ]
+
     data = {
         "stock.location": locations,
         "product.product": product_rows,
@@ -97,6 +114,7 @@ def build_mock() -> MockOdoo:
         "stock.quant": quants,
         "res.partner": partners,
         "stock.picking": pickings,
+        "account.move": invoices,
     }
     relations = {
         "product.product": {},
@@ -104,5 +122,6 @@ def build_mock() -> MockOdoo:
         "stock.quant": {"product_id": "product.product", "lot_id": "stock.lot",
                         "location_id": "stock.location"},
         "stock.picking": {"partner_id": "res.partner"},
+        "account.move": {"partner_id": "res.partner"},
     }
     return MockOdoo(data, relations)

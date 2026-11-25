@@ -47,6 +47,11 @@ class PendingDeliveriesArgs(BaseModel):
     days_ahead: int = Field(7, ge=0, le=60, description="Deliveries scheduled up to N days ahead")
 
 
+class OverdueInvoicesArgs(BaseModel):
+    customer: str | None = Field(None, description="Optional customer name filter")
+    min_days: int = Field(1, ge=1, le=365, description="Only invoices at least N days past due")
+
+
 class SearchDocsArgs(BaseModel):
     question: str = Field(description="What to look up in the warehouse procedures")
 
@@ -112,6 +117,29 @@ def build_tools(odoo: OdooClient, retriever=None) -> dict[str, Tool]:
                  "scheduled": r["scheduled_date"][:16], "state": r["state"],
                  "sale_order": r["origin"]} for r in rows]
 
+    def overdue_invoices(customer: str | None = None, min_days: int = 1):
+        today = datetime.now().date()
+        cutoff = (today - timedelta(days=min_days - 1)).isoformat()
+        domain = [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+                  ("payment_state", "in", ["not_paid", "partial"]),
+                  ("invoice_date_due", "<", cutoff)]
+        if customer:
+            domain.append(("partner_id", "ilike", customer))
+        rows = odoo.search_read("account.move", domain,
+                                ["name", "partner_id", "invoice_date_due", "amount_total",
+                                 "amount_residual", "payment_state", "currency_id"],
+                                limit=100, order="invoice_date_due asc")
+        invoices, totals = [], {}
+        for r in rows:
+            due = datetime.strptime(r["invoice_date_due"], "%Y-%m-%d").date()
+            name = _m2o(r["partner_id"])
+            invoices.append({"invoice": r["name"], "customer": name,
+                             "due_date": r["invoice_date_due"], "days_overdue": (today - due).days,
+                             "amount_due": r["amount_residual"], "currency": _m2o(r["currency_id"]),
+                             "partially_paid": r["payment_state"] == "partial"})
+            totals[name] = round(totals.get(name, 0) + r["amount_residual"], 2)
+        return {"invoices": invoices, "total_due_by_customer": totals}
+
     def search_docs(question: str):
         if retriever is None:
             return {"error": "documentation index not available"}
@@ -128,6 +156,9 @@ def build_tools(odoo: OdooClient, retriever=None) -> dict[str, Tool]:
              "location and lot.", StockByLocationArgs, stock_by_location),
         Tool("get_pending_deliveries", "Outgoing deliveries not done yet, scheduled up to N "
              "days ahead.", PendingDeliveriesArgs, pending_deliveries),
+        Tool("get_overdue_invoices", "Customer invoices past their due date and not fully "
+             "paid, oldest first, with the amount still due per customer.",
+             OverdueInvoicesArgs, overdue_invoices),
         Tool("search_procedures", "Search the warehouse procedures (receiving, FEFO picking, "
              "expired stock, returns, barcode scanning).", SearchDocsArgs, search_docs),
     ]
